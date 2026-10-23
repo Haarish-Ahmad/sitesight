@@ -1,0 +1,10 @@
+# Oracle VM (public, https):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+services:
+  web:
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env, e.g. sitesight.1-2-3-4.sslip.io}
+    ports: !override # replaces the 8080 port from docker-compose.yml
+      - "80:80" # Let's Encrypt checks the domain here, then Caddy redirects to https
+      - "443:443"
+      - "443:443/udp" # HTTP/3

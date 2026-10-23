@@ -1,0 +1,18 @@
+# Demo from this laptop through a Cloudflare quick tunnel (free, no account, random https link):
+#   scripts/demo.sh            (or: docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d --build)
+# The link changes every time the tunnel restarts, and works only while this laptop is on.
+services:
+  api:
+    environment:
+      COOKIE_SECURE: "1" # visitors come in over https; browsers also accept this on http://localhost
+  web:
+    ports: !override
+      - "127.0.0.1:8080:8080" # this laptop only; the tunnel is the way in from outside
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://web:8080
+    depends_on: [web]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

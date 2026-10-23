@@ -1,0 +1,149 @@
+{
+ "gemini": {
+  "photos": [
+   {
+    "file": "livingroom-plastering.jpg",
+    "want": "living_room / plastering",
+    "got": "living_room / painting (probable)",
+    "area": true,
+    "stage": false,
+    "confidentlyWrong": false,
+    "s": 7,
+    "error": ""
+   },
+   {
+    "file": "livingroom-demolition-red.jpg",
+    "want": "living_room / unknown",
+    "got": "living_room / unknown (probable)",
+    "area": true,
+    "stage": true,
+    "confidentlyWrong": false,
+    "s": 5.1,
+    "error": ""
+   },
+   {
+    "file": "livingroom-plastered-brick.jpg",
+    "want": "living_room / plastering",
+    "got": "living_room / plastering (probable)",
+    "area": true,
+    "stage": true,
+    "confidentlyWrong": false,
+    "s": 7.2,
+    "error": ""
+   },
+   {
+    "file": "livingroom-painted-wires.jpg",
+    "want": "living_room / painting",
+    "got": "living_room / finishing (probable)",
+    "area": true,
+    "stage": false,
+    "confidentlyWrong": false,
+    "s": 6.6,
+    "error": ""
+   },
+   {
+    "file": "room-foam-insulation.jpg",
+    "want": "other / unknown",
+    "got": "unknown / unknown (probable)",
+    "area": false,
+    "stage": true,
+    "confidentlyWrong": false,
+    "s": 3.4,
+    "error": ""
+   },
+   {
+    "file": "bathroom-plumbing-bathtub.jpg",
+    "want": "bathroom / plumbing",
+    "got": "bathroom / plastering (probable)",
+    "area": true,
+    "stage": false,
+    "confidentlyWrong": false,
+    "s": 38.1,
+    "error": ""
+   },
+   {
+    "file": "livingroom-timber-frame.jpg",
+    "want": "living_room / structure",
+    "got": "living_room / structure (confirmed)",
+    "area": true,
+    "stage": true,
+    "confidentlyWrong": false,
+    "s": 5.2,
+    "error": ""
+   }
+  ],
+  "plans": [
+   {
+    "file": "sample-house-g1.png",
+    "name": "PROPOSED RESIDENCE",
+    "nameOk": true,
+    "rooms": 20,
+    "wantRooms": 20,
+    "precision": 1,
+    "recall": 1,
+    "missed": "",
+    "s": 5.7,
+    "error": ""
+   },
+   {
+    "file": "sample-apartment-block.png",
+    "name": "SRI VINAYAGA APARTMENTS · BLOCK A",
+    "nameOk": true,
+    "rooms": 144,
+    "wantRooms": 144,
+    "precision": 1,
+    "recall": 1,
+    "missed": "",
+    "s": 4.2,
+    "error": ""
+   }
+  ],
+  "chat": [
+   {
+    "q": "How far along is the project?",
+    "answer": "Sri Vinayaga Apartments is about 27% complete, with Block A also at 27% complete. Out of 148 total rooms, 109 have started, 39 are not started, and 0 are finished. Most active rooms are currently at the brickwork stage.",
+    "offline": false,
+    "refs": 0,
+    "ungrounded": "",
+    "s": 2.5,
+    "error": ""
+   },
+   {
+    "q": "What is left in Flat A-101?",
+    "answer": "In Flat A-101, all 8 rooms are still unfinished, with 53 of 53 required items left to do [U3]. These include doors in 4 rooms, along with flooring, skirting, light points, windows, and floor tiles across 3 rooms [U3]. Currently, 2 rooms are at the plumbing stage and 6 are at plastering [U3].",
+    "offline": false,
+    "refs": 1,
+    "ungrounded": "",
+    "s": 2.4,
+    "error": ""
+   },
+   {
+    "q": "Which rooms are at brickwork?",
+    "answer": "There are 39 rooms at brickwork: Block A Ground floor (4 rooms), Block A Floor 2 Flat A-201 (8 rooms), Block A Floor 2 Flat A-202 (8 rooms), Block A Floor 2 Flat A-203 (8 rooms), Block A Floor 2 Flat A-204 (8 rooms), and Block A Floor 2 (3 rooms).",
+    "offline": false,
+    "refs": 0,
+    "ungrounded": "",
+    "s": 43,
+    "error": ""
+   },
+   {
+    "q": "What changed this week?",
+    "answer": "No site updates were logged this week. Overall progress stayed at 27%.",
+    "offline": false,
+    "refs": 0,
+    "ungrounded": "",
+    "s": 4.5,
+    "error": ""
+   },
+   {
+    "q": "Are there any high priority issues?",
+    "answer": "There are no open issues or progress alerts.",
+    "offline": false,
+    "refs": 0,
+    "ungrounded": "",
+    "s": 2.2,
+    "error": ""
+   }
+  ]
+ }
+}

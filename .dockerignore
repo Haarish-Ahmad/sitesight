@@ -1,0 +1,10 @@
+node_modules
+web/dist
+data
+eval-data
+eval-results
+photos
+plans
+graphify-out
+.env
+.git

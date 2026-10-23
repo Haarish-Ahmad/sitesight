@@ -1,0 +1,58 @@
+# This machine: docker compose up --build -d   -> http://localhost:8080
+# Oracle VM:    see DEPLOY.md (adds docker-compose.prod.yml for https)
+
+x-logging: &logging # keep container logs from filling the disk
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: sitesight
+      POSTGRES_USER: sitesight
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - sitesight-pgdata:/var/lib/postgresql/data # the database; survives rebuilds (only `down -v` deletes it)
+    ports:
+      - "127.0.0.1:5432:5432" # this machine only (backups, tests); never reachable from outside
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sitesight -d sitesight"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    logging: *logging
+
+  api:
+    build: { context: ., dockerfile: Dockerfile.api }
+    env_file: .env # keys stay on the host, never in the image
+    environment:
+      AI_PROVIDER: gemini
+      DATABASE_URL: postgres://sitesight:${POSTGRES_PASSWORD}@db:5432/sitesight
+      TZ: ${TZ:-Asia/Kolkata} # "today" and "this week" in reports and chat follow this
+    volumes:
+      - sitesight-data:/data # photos and documents
+    depends_on:
+      db: { condition: service_healthy }
+    restart: unless-stopped
+    logging: *logging
+
+  web:
+    build: { context: ., dockerfile: Dockerfile.web }
+    environment:
+      SITE_ADDRESS: ":8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - caddy-data:/data # https certificates; kept so they are not requested again on every rebuild
+      - caddy-config:/config
+    depends_on: [api]
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  sitesight-data:
+  sitesight-pgdata:
+  caddy-data:
+  caddy-config:

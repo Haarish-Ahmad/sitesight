@@ -1,0 +1,31 @@
+{
+  "sample-house-g1.png": {
+    "name": "Proposed Residence",
+    "spec": {
+      "type": "house",
+      "levels": [
+        { "floor": 0, "rooms": ["Car parking", "Sit out", "Pooja", "Living", "Dining", "Staircase", "Wash area", "Bedroom", "Toilet", "Kitchen", "Store"] },
+        { "floor": 1, "rooms": ["Balcony", "Master bedroom", "Toilet", "Family lounge", "Staircase", "Bedroom", "Toilet", "Bedroom", "Open terrace"] }
+      ],
+      "outside": ["Exterior"]
+    }
+  },
+  "sample-apartment-block.png": {
+    "name": "Sri Vinayaga Apartments",
+    "spec": {
+      "type": "apartment",
+      "blocks": [
+        {
+          "floors": 5, "basement": false, "stilt": true,
+          "flatTypes": [
+            { "name": "2BHK", "perFloor": 2, "rooms": ["Living / dining", "Kitchen", "Utility", "Bedroom", "Toilet", "Toilet", "Bedroom", "Balcony"] },
+            { "name": "3BHK", "perFloor": 2, "rooms": ["Living / dining", "Kitchen", "Utility", "Master bedroom", "Toilet", "Toilet", "Bedroom", "Bedroom"] }
+          ],
+          "commonRooms": ["Lift", "Staircase", "Lobby"],
+          "outside": ["Exterior", "Terrace"]
+        }
+      ],
+      "site": []
+    }
+  }
+}

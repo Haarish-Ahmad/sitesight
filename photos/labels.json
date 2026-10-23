@@ -1,0 +1,9 @@
+{
+  "livingroom-plastering.jpg": {"area": "living_room", "stage": "plastering"},
+  "livingroom-demolition-red.jpg": {"area": "living_room", "stage": "unknown"},
+  "livingroom-plastered-brick.jpg": {"area": "living_room", "stage": "plastering"},
+  "livingroom-painted-wires.jpg": {"area": "living_room", "stage": "painting"},
+  "room-foam-insulation.jpg": {"area": "other", "stage": "unknown"},
+  "bathroom-plumbing-bathtub.jpg": {"area": "bathroom", "stage": "plumbing"},
+  "livingroom-timber-frame.jpg": {"area": "living_room", "stage": "structure"}
+}

@@ -1,0 +1,41 @@
+# SITE_ADDRESS ":8080" = plain http on this machine (docker-compose.yml).
+# A domain name, e.g. sitesight.1-2-3-4.sslip.io = https with a free Let's Encrypt certificate, renewed automatically
+# (docker-compose.prod.yml on the Oracle VM; needs ports 80 and 443 open).
+{
+	servers {
+		# Behind the Cloudflare tunnel (docker-compose.tunnel.yml) every request arrives from the tunnel container,
+		# so the visitor's real address comes from Cloudflare's header. Only trusted from private (Docker) addresses:
+		# a visitor reaching Caddy straight from the internet (Oracle VM) cannot fake it.
+		trusted_proxies static private_ranges
+		client_ip_headers CF-Connecting-IP
+	}
+}
+
+{$SITE_ADDRESS::8080} {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(self), microphone=(self), geolocation=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+		Strict-Transport-Security "max-age=31536000" # browsers ignore it on plain http
+		-Server
+	}
+
+	handle /api/* {
+		request_body {
+			max_size 350MB # photo uploads (the API allows 320 MB per upload)
+		}
+		reverse_proxy api:3001 {
+			header_up X-Real-IP {client_ip} # replaces anything the client sent; the API rate-limits by it
+		}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html # also serves /suhayb (the admin page) and the app's #/ routes
+		file_server
+	}
+}
