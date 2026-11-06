@@ -1,8 +1,8 @@
 import { modelProvider } from "./ollama.js";
 import { PhotoAnalysis, PhotoAnalysisSchema } from "./schema.js";
 
-// A provider turns an image into raw (unchecked) model output.
-export type Provider = (image: Buffer) => Promise<unknown>;
+// A provider turns an image (or a video's frames, in order) into raw (unchecked) model output.
+export type Provider = (image: Buffer | Buffer[]) => Promise<unknown>;
 
 export const demoProvider: Provider = async () => ({
   area: "bathroom",
@@ -17,7 +17,7 @@ const providers: Record<string, Provider> = { demo: demoProvider, local: modelPr
 
 // Every caller goes through here. Invalid output is retried once, then throws.
 export async function analysePhoto(
-  image: Buffer,
+  image: Buffer | Buffer[],
   provider: Provider = providers[process.env.AI_PROVIDER ?? "demo"] ?? demoProvider,
 ): Promise<PhotoAnalysis> {
   let lastError: unknown;

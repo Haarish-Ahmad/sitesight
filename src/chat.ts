@@ -3,7 +3,7 @@ import { areasOf } from "./alerts.js";
 import { ago } from "./describe.js";
 import { buildReport } from "./report.js";
 import { ORDER, stageLabel } from "./stages.js";
-import { meanProgress, needsReview, statusOf, summarise, type Summary } from "./summary.js";
+import { meanProgress, mediaLabel, needsReview, statusOf, summarise, type Summary } from "./summary.js";
 import { progressAlerts } from "./alerts.js";
 import { plainSummary } from "./describe.js";
 import type { Issue, Update } from "./types.js";
@@ -54,7 +54,7 @@ export function evidenceText(updates: Update[], issues: Issue[]) {
   const u = updates.map((x) => {
     const ai = x.photos.map((p) => p.ai && `AI saw ${p.ai.stage} (${p.ai.confidence})`).filter(Boolean);
     const flags = x.photos.flatMap((p) => p.flags);
-    return `[U${x.id}] ${day(x.at)} | ${x.scopeLabel} | reported stage: ${x.stage} | ${x.photos.length} photos | status: ${STATUS[statusOf(x)]}${x.note ? ` | note: ${x.note}` : ""}${ai.length ? ` | ${ai.join(", ")}` : ""}${flags.length ? ` | flags: ${flags.join("; ")}` : ""}`;
+    return `[U${x.id}] ${day(x.at)} | ${x.scopeLabel} | reported stage: ${x.stage} | ${mediaLabel(x.photos)} | status: ${STATUS[statusOf(x)]}${x.note ? ` | note: ${x.note}` : ""}${ai.length ? ` | ${ai.join(", ")}` : ""}${flags.length ? ` | flags: ${flags.join("; ")}` : ""}`;
   });
   const i = issues.map((x) => `[I${x.id}] ${day(x.at)} | ${x.scopeLabel} | ${x.severity} | ${x.status} | ${x.title}${x.note ? ` | ${x.note}` : ""}`);
   return [...u, ...i].join("\n");

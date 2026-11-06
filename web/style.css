@@ -189,7 +189,8 @@ textarea { resize: vertical; }
 .confirm-body { color: var(--ink-2); margin-bottom: 16px; }
 .modal .row-actions { justify-content: flex-end; margin-top: 20px; }
 .viewer { position: relative; background: #111; border-radius: 12px; display: grid; place-items: center; min-height: 240px; overflow: hidden; }
-.viewer img { max-width: 100%; max-height: 68vh; display: block; }
+.viewer img, .viewer video { max-width: 100%; max-height: 68vh; display: block; }
+.viewer video { width: 100%; background: #000; }
 .viewer .nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255, 255, 255, 0.92); color: var(--ink); width: 40px; height: 40px; box-shadow: var(--shadow-sm); }
 .viewer .prev { left: 12px; }
 .viewer .next { right: 12px; }
@@ -358,7 +359,9 @@ textarea { resize: vertical; }
 .note { color: var(--ink-2); margin: 0; }
 .thumbs { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .thumb { position: relative; width: 96px; height: 76px; border-radius: 8px; overflow: hidden; border: 0; padding: 0; cursor: pointer; background: var(--soft-2); flex: none; }
-.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s; }
+.thumb img, .thumb video { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s; }
+/* a video's length on its thumbnail, like a phone gallery */
+.play-tag { position: absolute; left: 5px; bottom: 5px; display: inline-flex; align-items: center; gap: 3px; background: rgba(0, 0, 0, 0.72); color: #fff; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; border-radius: 99px; padding: 2px 7px 2px 5px; pointer-events: none; }
 .thumb:hover img { transform: scale(1.05); }
 .thumb.flagged { box-shadow: 0 0 0 2px #e8a33d; }
 .thumb-tag { position: absolute; top: 5px; right: 5px; background: #fff; border-radius: 99px; padding: 3px; display: grid; color: var(--info); box-shadow: var(--shadow-sm); }
@@ -401,6 +404,7 @@ textarea { resize: vertical; }
 .drop.small { padding: 16px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin: 0; align-self: end; }
 .capture-row { display: none; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
 .capture-row .btn { min-height: 56px; }
+.capture-row .btn:nth-child(3) { grid-column: 1 / -1; } /* photo + video side by side, gallery under them */
 .thumbs.picked .thumb { cursor: default; }
 .remove { position: absolute; top: 5px; right: 5px; width: 24px; height: 24px; border-radius: 99px; border: 0; background: #fff; color: var(--ink); display: grid; place-items: center; cursor: pointer; box-shadow: var(--shadow-sm); }
 .submit-bar { position: sticky; bottom: 16px; display: flex; justify-content: space-between; align-items: center; gap: 16px; background: rgba(255, 255, 255, 0.85); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border: 1px solid var(--line); border-radius: 16px; padding: 12px 12px 12px 20px; box-shadow: var(--shadow); flex-wrap: wrap; z-index: 10; }

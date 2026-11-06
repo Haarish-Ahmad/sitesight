@@ -144,8 +144,22 @@ export async function shrinkPhoto(file: Blob, max = 1024): Promise<string> {
 }
 
 // Which AI the server uses. "fast" (Gemini) answers in seconds, so the app can ask it without being asked.
-let ai: Promise<{ provider: string; fast: boolean }> | undefined;
-export const aiInfo = () => (ai ??= api<{ provider: string; fast: boolean }>("/api/ai").catch(() => ({ provider: "", fast: false })));
+// "video": the server can take site videos (it has ffmpeg).
+type AiInfo = { provider: string; fast: boolean; video: boolean };
+let ai: Promise<AiInfo> | undefined;
+export const aiInfo = () => (ai ??= api<AiInfo>("/api/ai").catch(() => ({ provider: "", fast: false, video: false })));
+
+// A video's length, read in the browser so a long one is refused before minutes of uploading. null = cannot tell.
+export const videoSeconds = (file: Blob) =>
+  new Promise<number | null>((ok) => {
+    const v = document.createElement("video");
+    const url = URL.createObjectURL(file);
+    const done = (s: number | null) => (URL.revokeObjectURL(url), ok(s));
+    v.preload = "metadata";
+    v.onloadedmetadata = () => done(Number.isFinite(v.duration) ? v.duration : null);
+    v.onerror = () => done(null);
+    v.src = url;
+  });
 
 // Speech to text with the browser's own recogniser (Chrome, Edge, Safari): for dusty hands on site.
 // null where the browser has none, so callers just hide the mic.

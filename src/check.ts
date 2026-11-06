@@ -15,15 +15,16 @@ function km(a: Gps, b: Gps) {
 }
 
 // ponytail: exact-bytes hash only (a re-saved or cropped copy passes); site location = the first photo that had GPS.
-export function photoFlags(meta: PhotoMeta, uploadedAt: Date, prior: { hash?: string; gps?: Gps | null }[]): string[] {
+export function photoFlags(meta: PhotoMeta, uploadedAt: Date, prior: { hash?: string; gps?: Gps | null }[], what: "photo" | "video" = "photo"): string[] {
   const flags: string[] = [];
-  if (prior.some((p) => p.hash === meta.hash)) flags.push("This exact photo was uploaded before");
+  const What = what === "photo" ? "Photo" : "Video";
+  if (prior.some((p) => p.hash === meta.hash)) flags.push(`This exact ${what} was uploaded before`);
   if (meta.takenAt) {
     const days = Math.floor((+uploadedAt - +meta.takenAt) / DAY);
-    if (days > MAX_AGE_DAYS) flags.push(`Photo was taken ${days} days before it was uploaded`);
+    if (days > MAX_AGE_DAYS) flags.push(`${What} was taken ${days} days before it was uploaded`);
   }
   const site = prior.find((p) => p.gps)?.gps ?? undefined;
-  if (meta.gps && site && km(site, meta.gps) > MAX_KM) flags.push(`Photo was taken ${km(site, meta.gps).toFixed(1)} km from earlier photos`);
+  if (meta.gps && site && km(site, meta.gps) > MAX_KM) flags.push(`${What} was taken ${km(site, meta.gps).toFixed(1)} km from earlier photos`);
   return flags;
 }
 

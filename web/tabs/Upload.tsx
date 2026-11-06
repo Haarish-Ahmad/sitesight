@@ -1,19 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { GROUPS, ORDER, stageLabel, stageNo, type Stage } from "../../src/stages";
 import { scopeLabel } from "../../src/structure";
+import { mediaLabel } from "../../src/summary";
 import type { Update } from "../../src/types";
-import { aiInfo, api, buzz, fmtSize, plural, queueUpdate, shrinkPhoto, upload, useOnline } from "../lib";
+import { aiInfo, api, buzz, fmtSize, queueUpdate, shrinkPhoto, upload, useOnline, videoSeconds } from "../lib";
 import { ALL, Empty, Icon, matchScope, MicButton, Progress, ScopePicker, StageBadge, useFeedback, type Scope } from "../ui";
-import { useProject } from "./common";
+import { clock, useProject } from "./common";
 
 const TYPES = ["image/jpeg", "image/png", "image/webp"];
+// A walk round the room: shows more than a few photos, and the manager can talk over it. Limits match the server (src/video.ts).
+const VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/webm", "video/3gpp"];
+const isVideo = (f: File) => f.type.startsWith("video/") || (!f.type && /\.(mp4|mov|webm|3gp)$/i.test(f.name));
+const MAX_VIDEOS = 3;
+const MAX_VIDEO_S = 120;
 // A QR sticker opens "#/p/<id>/upload?b=A&f=1&u=A-101&n=": start with that place picked.
 function fromLink(): Scope | null {
   const q = new URLSearchParams(location.hash.split("?")[1] ?? "");
   return q.has("f") || q.has("b") ? { block: q.get("b") ?? "", floor: q.get("f") ?? "", unit: q.get("u") ?? "", name: q.get("n") ?? "" } : null;
 }
 const MAX = 30;
-type Picked = { file: File; url: string };
+type Picked = { file: File; url: string; video?: { seconds: number | null } };
 type Recent = { scope: Scope; label: string };
 type Hint = { state: "asking" } | { state: "done"; stage: Stage | null; area: string } | { state: "failed" };
 
@@ -43,7 +49,7 @@ const loadDraft = (pid: string) => {
   }
 };
 
-type Done = { label: string; stage: string; photos: number; queued: boolean };
+type Done = { label: string; stage: string; photos: number; media: string; queued: boolean };
 
 export function Upload() {
   const ctx = useProject();
@@ -66,10 +72,12 @@ export function Upload() {
   const [done, setDone] = useState<Done | null>(null);
   const [hint, setHint] = useState<Hint | null>(null);
   const [fast, setFast] = useState(false);
+  const [canVideo, setCanVideo] = useState(false);
   const online = useOnline();
   const input = useRef<HTMLInputElement>(null);
-  useEffect(() => void aiInfo().then((a) => setFast(a.fast)), []);
+  useEffect(() => void aiInfo().then((a) => (setFast(a.fast), setCanVideo(a.video))), []);
   const camera = useRef<HTMLInputElement>(null);
+  const recorder = useRef<HTMLInputElement>(null);
 
   useEffect(() => () => ctx.setUploadPreset(null), []);
   const live = useRef(photos);
@@ -95,19 +103,32 @@ export function Upload() {
     }
   }
 
-  function add(list: FileList | null) {
+  async function add(list: FileList | null) {
     if (!list) return;
+    const files = [...list]; // the input is cleared right after this call starts
     const ok: Picked[] = [];
     const bad: string[] = [];
-    for (const f of [...list]) {
-      if (!TYPES.includes(f.type)) bad.push(`${f.name} (not JPEG/PNG/WebP)`);
+    let videos = photos.filter((p) => p.video).length;
+    for (const f of files) {
+      if (isVideo(f)) {
+        if (!canVideo) bad.push(`${f.name} (videos cannot be uploaded on this server yet)`);
+        else if (f.size > 100e6) bad.push(`${f.name} (over 100 MB: record a shorter video)`);
+        else if (videos >= MAX_VIDEOS) bad.push(`${f.name} (at most ${MAX_VIDEOS} videos per update)`);
+        else {
+          const seconds = await videoSeconds(f);
+          if (seconds !== null && seconds > MAX_VIDEO_S + 5) bad.push(`${f.name} (${clock(seconds)} long: keep videos under ${MAX_VIDEO_S / 60} minutes)`);
+          else (videos++, ok.push({ file: f, url: URL.createObjectURL(f), video: { seconds } }));
+        }
+      } else if (!TYPES.includes(f.type)) bad.push(`${f.name} (not JPEG/PNG/WebP${canVideo ? " or MP4/MOV" : ""})`);
       else if (f.size > 20e6) bad.push(`${f.name} (over 20 MB)`);
       else ok.push({ file: f, url: URL.createObjectURL(f) });
     }
-    const room = MAX - photos.length;
-    if (ok.length > room) bad.push(`${ok.length - room} photo(s) over the ${MAX}-photo limit`);
-    setPhotos([...photos, ...ok.slice(0, room)]);
-    if (fast && !photos.length && ok.length) void askHint(ok[0].file); // Gemini answers in seconds; the local model is asked only on request
+    const now = live.current; // picks made while a video's length was being read
+    const room = MAX - now.length;
+    if (ok.length > room) bad.push(`${ok.length - room} file(s) over the ${MAX}-file limit`);
+    setPhotos([...now, ...ok.slice(0, room)]);
+    const still = ok.find((p) => !p.video);
+    if (fast && !now.some((p) => !p.video) && still) void askHint(still.file); // Gemini answers in seconds; the local model is asked only on request
     if (bad.length) toast(`Skipped: ${bad.join(", ")}`, "error");
   }
 
@@ -118,7 +139,7 @@ export function Upload() {
     const label = scopeLabel(target);
     const finish = (queued: boolean) => {
       buzz(queued ? [20, 60, 20] : 30);
-      setDone({ label, stage, photos: photos.length, queued });
+      setDone({ label, stage, photos: photos.length, media: mediaLabel(photos), queued });
       saveRecent(pid, { scope, label });
       setHint(null);
       photos.forEach((p) => URL.revokeObjectURL(p.url));
@@ -161,7 +182,7 @@ export function Upload() {
           ) : (
             <>
               {done.label} is now marked <b>{done.stage}</b>
-              {done.photos ? <>. The AI is checking {plural(done.photos, "photo")} in the background; results show up in Review.</> : "."}
+              {done.photos ? <>. The AI is checking {done.media} in the background; results show up in Review.</> : "."}
               {done.stage === "finishing" && " It counts as finished once you approve it."}
             </>
           )}
@@ -194,11 +215,14 @@ export function Upload() {
       </section>
 
       <section className="card">
-        <h2><span className="step-no">2</span> Photos</h2>
+        <h2><span className="step-no">2</span> {canVideo ? "Photos and videos" : "Photos"}</h2>
+        {canVideo && <p className="muted small">A short video walking round the room shows more than a few photos, and you can talk over it. Up to {MAX_VIDEO_S / 60} minutes.</p>}
         <div className="capture-row">
           <button type="button" className="btn dark" onClick={() => camera.current?.click()}><Icon name="camera" /> Take photo</button>
+          {canVideo && <button type="button" className="btn dark" onClick={() => recorder.current?.click()}><Icon name="video" /> Record video</button>}
           <button type="button" className="btn ghost" onClick={() => input.current?.click()}><Icon name="upload" /> From gallery</button>
           <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={(e) => (add(e.target.files), (e.target.value = ""))} />
+          <input ref={recorder} type="file" accept="video/*" capture="environment" hidden onChange={(e) => (add(e.target.files), (e.target.value = ""))} />
         </div>
         <div
           className={`drop ${drag ? "over" : ""}`}
@@ -211,22 +235,23 @@ export function Upload() {
           onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), input.current?.click())}
         >
           <Icon name="camera" size={28} />
-          <b>Add photos</b>
-          <span className="muted small">Tap to take or choose photos, or drop them here. Up to {MAX}, JPEG/PNG/WebP.</span>
-          <input ref={input} type="file" accept={TYPES.join(",")} multiple hidden onChange={(e) => (add(e.target.files), (e.target.value = ""))} />
+          <b>{canVideo ? "Add photos or videos" : "Add photos"}</b>
+          <span className="muted small">{canVideo ? `Tap to choose, or drop them here. Up to ${MAX} files: JPEG/PNG/WebP photos, and up to ${MAX_VIDEOS} MP4/MOV videos.` : `Tap to take or choose photos, or drop them here. Up to ${MAX}, JPEG/PNG/WebP.`}</span>
+          <input ref={input} type="file" accept={(canVideo ? [...TYPES, ...VIDEO_TYPES, ".mov", ".mp4"] : TYPES).join(",")} multiple hidden onChange={(e) => (add(e.target.files), (e.target.value = ""))} />
         </div>
         {photos.length > 0 && (
           <>
             <div className="thumbs picked">
               {photos.map((p, i) => (
                 <div className="thumb" key={p.url}>
-                  <img src={p.url} alt={p.file.name} />
+                  {p.video ? <video src={`${p.url}#t=0.5`} muted playsInline preload="metadata" aria-label={p.file.name} /> : <img src={p.url} alt={p.file.name} />}
+                  {p.video && <span className="play-tag"><Icon name="play" size={11} /> {p.video.seconds !== null ? clock(p.video.seconds) : "video"}</span>}
                   <button type="button" className="remove" onClick={() => (URL.revokeObjectURL(p.url), setPhotos(photos.filter((_, j) => j !== i)))} aria-label={`Remove ${p.file.name}`}><Icon name="x" size={14} /></button>
                 </div>
               ))}
             </div>
-            <p className="muted small">{plural(photos.length, "photo")} · {fmtSize(total)}</p>
-            {!fast && !hint && <button type="button" className="btn ghost small" onClick={() => askHint(photos[0].file)}><Icon name="sparkle" size={14} /> Ask the AI which stage this looks like (can take a few minutes)</button>}
+            <p className="muted small">{mediaLabel(photos)} · {fmtSize(total)}{total > 60e6 ? " · a big upload: use Wi-Fi if you can" : ""}</p>
+            {!fast && !hint && photos.some((p) => !p.video) && <button type="button" className="btn ghost small" onClick={() => askHint(photos.find((p) => !p.video)!.file)}><Icon name="sparkle" size={14} /> Ask the AI which stage this looks like (can take a few minutes)</button>}
           </>
         )}
       </section>
@@ -256,7 +281,7 @@ export function Upload() {
           ))}
         </div>
         {goesBack && <p className="callout warn"><Icon name="alert" size={15} /> This is earlier than where these rooms are now. Saving moves them back to {stage}.</p>}
-        {stage === "finishing" && <p className="callout"><Icon name="eye" size={15} /> Finishing needs at least one photo, and counts once someone approves it in Review.</p>}
+        {stage === "finishing" && <p className="callout"><Icon name="eye" size={15} /> Finishing needs at least one photo or video, and counts once someone approves it in Review.</p>}
         <label className="field">
           <span className="label-row">Note <em className="muted">(optional)</em> <MicButton onText={(t) => setNote((n) => (n ? `${n} ${t}` : t).slice(0, 1000))} /></span>
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={1000} placeholder="Anything the office should know, e.g. waiting for tiles to arrive" />
@@ -271,7 +296,7 @@ export function Upload() {
             <Progress value={progress * 100} label="Upload progress" />
           </div>
         ) : (
-          <span className="muted small">{!target.length ? "Pick where" : !stage ? "Pick a stage" : `${scopeLabel(target)} → ${stage}${photos.length ? `, ${plural(photos.length, "photo")}` : ", no photos"}`}</span>
+          <span className="muted small">{!target.length ? "Pick where" : !stage ? "Pick a stage" : `${scopeLabel(target)} → ${stage}${photos.length ? `, ${mediaLabel(photos)}` : ", no photos"}`}</span>
         )}
         <button className="btn primary big" disabled={!stage || !target.length || progress !== null || (stage === "finishing" && !photos.length)}>
           <Icon name={online ? "upload" : "wifiOff"} size={16} /> {online ? "Save update" : "Save on this phone"}

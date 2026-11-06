@@ -26,6 +26,8 @@ const ICONS = {
   left: '<path d="M15 18l-6-6 6-6"/>',
   right: '<path d="M9 18l6-6-6-6"/>',
   back: '<path d="M19 12H5M12 19l-7-7 7-7"/>',
+  video: '<rect x="1" y="5" width="15" height="14" rx="2"/><path d="M23 7l-7 5 7 5z"/>',
+  play: '<path d="M6 4l14 8-14 8z" fill="currentColor"/>',
   camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
   scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/>',
@@ -278,7 +280,8 @@ export function MicButton({ onText }: { onText: (text: string) => void }) {
 
 // ---------- photo viewer
 
-export type ViewerPhoto = { src: string; full: string; title: string; sub?: string; notes?: ReactNode };
+// video: the clip to play; src is then a frame from it, shown until it plays
+export type ViewerPhoto = { src: string; full: string; title: string; sub?: string; notes?: ReactNode; video?: string };
 
 export function PhotoViewer({ photos, start, onClose }: { photos: ViewerPhoto[]; start: number; onClose: () => void }) {
   const [i, setI] = useState(start);
@@ -297,7 +300,7 @@ export function PhotoViewer({ photos, start, onClose }: { photos: ViewerPhoto[];
         {photos.length > 1 && (
           <button className="icon-btn nav prev" disabled={i === 0} onClick={() => setI(i - 1)} aria-label="Previous photo"><Icon name="left" size={22} /></button>
         )}
-        <img src={p.src} alt={p.title} />
+        {p.video ? <video key={p.video} src={p.video} poster={p.src} controls playsInline preload="metadata" aria-label={`Video: ${p.title}`} /> : <img src={p.src} alt={p.title} />}
         {photos.length > 1 && (
           <button className="icon-btn nav next" disabled={i === photos.length - 1} onClick={() => setI(i + 1)} aria-label="Next photo"><Icon name="right" size={22} /></button>
         )}
@@ -309,7 +312,7 @@ export function PhotoViewer({ photos, start, onClose }: { photos: ViewerPhoto[];
         </div>
         <div className="viewer-side">
           {photos.length > 1 && <span className="muted">{i + 1} of {photos.length}</span>}
-          <a className="btn ghost small" href={p.full} target="_blank" rel="noreferrer"><Icon name="download" size={14} /> Original</a>
+          <a className="btn ghost small" href={p.full} target="_blank" rel="noreferrer"><Icon name="download" size={14} /> {p.video ? "Download video" : "Original"}</a>
         </div>
       </div>
     </Modal>

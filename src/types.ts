@@ -35,6 +35,9 @@ export type Photo = {
   ai: PhotoAi | null;
   aiError: boolean;
   compare?: import("./compare.js").Compare; // against the earlier photo of the same place
+  // A video: `file` is then a frame from it (thumbnails, comparisons and issues use that), and the AI saw several frames.
+  // video.file is the upload until the background job converts it to an .v.mp4 every browser plays.
+  video?: { file: string; seconds: number };
 };
 
 // One claim by the site manager: these rooms are at this stage, with this evidence.

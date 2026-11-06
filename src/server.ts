@@ -1,6 +1,6 @@
 import "./env.js";
-import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import { createReadStream, existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import sharp from "sharp";
 import { z } from "zod";
@@ -9,6 +9,7 @@ import { answerQuestion } from "./chat.js";
 import { DEFAULT_MODEL } from "./ai/ollama.js";
 import { GEMINI_MODEL } from "./ai/gemini.js";
 import { photoFlags, readMeta } from "./check.js";
+import { aiFrames, hasFfmpeg, MAX_SECONDS, poster, probe, toMp4 } from "./video.js";
 import { canCompare, comparePhotos, progressFlag, type Compare } from "./compare.js";
 import { claimFlags } from "./rules.js";
 import { askEta, etaInput, type Eta } from "./eta.js";
@@ -155,6 +156,11 @@ async function smallPhoto(b64: string): Promise<string> {
 const IMAGE_EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 const PHOTO_FILE = /^\d+-\d+\.(jpg|png|webp)$/;
 const MAX_PHOTOS = 30;
+// Videos come in the same "photos" field. Some phones send no type for a .mov (it arrives as octet-stream), so the name decides then.
+const VIDEO_TYPE: Record<string, string> = { mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", "3gp": "video/3gpp" };
+const videoExt = (f: File) => Object.keys(VIDEO_TYPE).find((e) => VIDEO_TYPE[e] === f.type) ?? (!f.type || f.type === "application/octet-stream" ? /\.(mp4|mov|webm|3gp)$/i.exec(f.name)?.[1].toLowerCase() : undefined);
+const VIDEO_FILE = /^\d+-\d+(\.v)?\.(mp4|mov|webm|3gp)$/;
+const MAX_VIDEOS = 3;
 
 function roomsOf(p: Project, ids: string[]) {
   const byId = new Map(p.rooms.map((r) => [r.id, r]));
@@ -211,9 +217,22 @@ function startPlanJob(owner: string, images: Buffer[]) {
 
 async function runJob(job: Job) {
   if (!(await db.getProject(job.projectId))) return; // deleted while queued
+  const video = (await db.updates.load(job.projectId)).find((x) => x.id === job.updateId)?.photos.find((x) => x.file === job.file)?.video;
+  // a video is first converted to an mp4 every browser plays (the upload is deleted once the new file is recorded)
+  let mp4: string | null = null;
+  if (video && !video.file.endsWith(".v.mp4")) {
+    const out = video.file.replace(/\.\w+$/, ".v.mp4");
+    try {
+      await toMp4(db.photoPath(job.projectId, video.file), db.photoPath(job.projectId, out));
+      mp4 = out;
+    } catch (e) {
+      console.error(`Video conversion failed for ${video.file}:`, e instanceof Error ? e.message : e);
+      rmSync(db.photoPath(job.projectId, out), { force: true });
+    }
+  }
   let ai: Photo["ai"] = null;
   try {
-    const a = await analysePhoto(readFileSync(db.photoPath(job.projectId, job.file)));
+    const a = await analysePhoto(video ? await aiFrames(db.photoPath(job.projectId, mp4 ?? video.file), video.seconds) : readFileSync(db.photoPath(job.projectId, job.file)));
     ai = { stage: a.stage, confidence: a.confidence, materials: a.materials, issues: a.issues, features: a.features };
   } catch (e) {
     console.error(`AI check failed for ${job.file}:`, e instanceof Error ? e.message : e);
@@ -235,6 +254,7 @@ async function runJob(job: Job) {
     const u = list.find((x) => x.id === job.updateId);
     const p = u?.photos.find((x) => x.file === job.file);
     if (!u || !p) return null;
+    if (mp4 && p.video) [p.video.file, mp4] = [mp4, p.video.file]; // mp4 now names the file to delete
     p.checking = false;
     p.aiError = !ai;
     p.ai = ai;
@@ -247,6 +267,7 @@ async function runJob(job: Job) {
     if (ai && !u.review) p.flags.push(...claimFlags(u.stage, ai));
     return { roomIds: u.roomIds, scopeLabel: u.scopeLabel };
   });
+  if (mp4) rmSync(db.photoPath(job.projectId, mp4), { force: true }); // the replaced upload, or the new file if the update was deleted meanwhile
   if (!hit || !ai?.issues.length) return;
   // AI-spotted problems become *suggestions*: a person confirms or dismisses them.
   await db.issues.mutate(job.projectId, (list, next) => {
@@ -286,6 +307,27 @@ async function sendPhoto(res: ServerResponse, id: string, file: string, width: n
   res.end(img);
 }
 
+// Browsers fetch video in pieces (Range requests) to start playing and to seek; Safari will not play without them.
+function sendVideo(req: IncomingMessage, res: ServerResponse, id: string, file: string) {
+  const path = db.photoPath(id, file);
+  if (!VIDEO_FILE.test(file) || !existsSync(path)) fail(404, "No such video");
+  const size = statSync(path).size;
+  const head = { "content-type": VIDEO_TYPE[file.split(".").pop()!], "accept-ranges": "bytes", "cache-control": "private, max-age=86400" };
+  const r = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? "");
+  if (!r || (!r[1] && !r[2])) {
+    res.writeHead(200, { ...head, "content-length": size });
+    return void createReadStream(path).pipe(res);
+  }
+  const start = r[1] ? Number(r[1]) : Math.max(0, size - Number(r[2])); // "bytes=-500" = the last 500
+  const end = r[1] && r[2] ? Math.min(Number(r[2]), size - 1) : size - 1;
+  if (start >= size || start > end) {
+    res.writeHead(416, { "content-range": `bytes */${size}` });
+    return void res.end();
+  }
+  res.writeHead(206, { ...head, "content-range": `bytes ${start}-${end}/${size}`, "content-length": end - start + 1 });
+  createReadStream(path, { start, end }).pipe(res);
+}
+
 const INLINE_TYPES: Record<string, string> = { pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp" };
 function sendDoc(res: ServerResponse, id: string, d: Doc) {
   const path = db.docPath(id, d.file);
@@ -310,6 +352,7 @@ async function projectRoute(req: IncomingMessage, res: ServerResponse, url: URL,
 
   if (m === "GET" && rest === "") return send(res, 200, await bundle(p, readOnly));
   if (m === "GET" && (g = rest.match(/^\/photos\/([^/]+)$/))) return sendPhoto(res, id, g[1], Math.min(2000, Math.max(0, Number(url.searchParams.get("w") ?? 1600) || 0)));
+  if (m === "GET" && (g = rest.match(/^\/videos\/([^/]+)$/))) return sendVideo(req, res, id, g[1]);
   if (m === "GET" && (g = rest.match(/^\/documents\/(\d+)\/file$/))) {
     const d = (await db.docs.load(id)).find((x) => x.id === Number(g![1])) ?? fail(404, "No such document");
     return sendDoc(res, id, d);
@@ -384,39 +427,66 @@ async function projectRoute(req: IncomingMessage, res: ServerResponse, url: URL,
     const note = String(fd.get("note") ?? "").trim().slice(0, 1000);
     const photos = files(fd, "photos");
     if (photos.length > MAX_PHOTOS) fail(400, `At most ${MAX_PHOTOS} photos per upload`);
-    if (stage.data === "finishing" && !photos.length) fail(400, "Finishing needs at least one photo for review");
+    if (photos.filter(videoExt).length > MAX_VIDEOS) fail(400, `At most ${MAX_VIDEOS} videos per upload`);
+    if (stage.data === "finishing" && !photos.length) fail(400, "Finishing needs at least one photo or video for review");
     for (const f of photos) {
-      if (!IMAGE_EXT[f.type]) fail(400, `${f.name}: use JPEG, PNG or WebP photos (on iPhone: Settings → Camera → Formats → Most Compatible)`);
+      if (videoExt(f)) {
+        if (f.size > 100 * MB) fail(400, `${f.name} is over 100 MB. Record a shorter video (up to ${MAX_SECONDS / 60} minutes).`);
+        continue;
+      }
+      if (!IMAGE_EXT[f.type]) fail(400, `${f.name}: use JPEG, PNG or WebP photos, or MP4/MOV videos (on iPhone: Settings → Camera → Formats → Most Compatible)`);
       if (f.size > 20 * MB) fail(400, `${f.name} is over 20 MB`);
     }
+    if (photos.some(videoExt) && !(await hasFfmpeg())) fail(400, "This server cannot take videos yet (ffmpeg is not installed). Upload photos instead.");
     const now = new Date();
     const prior = (await db.updates.load(id)).flatMap((u) => u.photos);
-    const prepared: { buf: Buffer; ext: string; meta: Awaited<ReturnType<typeof readMeta>>; flags: string[] }[] = [];
-    for (const f of photos) {
-      const buf = Buffer.from(await f.arrayBuffer());
-      const meta = await readMeta(buf);
-      const flags = photoFlags(meta, now, [...prior, ...prepared.map((x) => ({ hash: x.meta.hash, gps: x.meta.gps }))]);
-      prepared.push({ buf, ext: IMAGE_EXT[f.type], meta, flags });
+    // a video is stored as a frame from it (the picture everything else shows) plus the video file
+    const prepared: { buf: Buffer; ext: string; meta: Awaited<ReturnType<typeof readMeta>>; flags: string[]; video?: { tmp: string; ext: string; seconds: number } }[] = [];
+    const temp: string[] = [];
+    let created: Update;
+    try {
+      for (const f of photos) {
+        const buf = Buffer.from(await f.arrayBuffer());
+        const seen = [...prior, ...prepared.map((x) => ({ hash: x.meta.hash, gps: x.meta.gps }))];
+        const ext = videoExt(f);
+        if (!ext) {
+          const meta = await readMeta(buf);
+          prepared.push({ buf, ext: IMAGE_EXT[f.type], meta, flags: photoFlags(meta, now, seen) });
+          continue;
+        }
+        const tmp = `tmp-${randomBytes(6).toString("hex")}.${ext}`;
+        writeFileSync(db.photoPath(id, tmp), buf);
+        temp.push(tmp);
+        const v = (await probe(db.photoPath(id, tmp))) ?? fail(400, `${f.name} is not a video we can read. Use MP4 or MOV.`);
+        if (v.seconds > MAX_SECONDS + 5) fail(400, `${f.name} is ${Math.ceil(v.seconds / 60)} minutes long. Keep videos under ${MAX_SECONDS / 60} minutes.`);
+        const frame = await poster(db.photoPath(id, tmp), v.seconds).catch(() => fail(400, `${f.name} is not a video we can read. Use MP4 or MOV.`));
+        const meta = { hash: createHash("sha256").update(buf).digest("hex"), takenAt: v.takenAt, gps: v.gps };
+        prepared.push({ buf: frame, ext: "jpg", meta, flags: photoFlags(meta, now, seen, "video"), video: { tmp, ext, seconds: v.seconds } });
+      }
+      created = await db.updates.mutate(id, (list, next) => {
+        const u: Update = {
+          id: next,
+          at: now.toISOString(),
+          roomIds: rooms.map((r) => r.id),
+          scopeLabel: scopeLabel(rooms),
+          stage: stage.data!,
+          note,
+          photos: prepared.map((x, i): Photo => {
+            const file = `${next}-${i + 1}.${x.ext}`;
+            writeFileSync(db.photoPath(id, file), x.buf);
+            const video = x.video && { file: `${next}-${i + 1}.${x.video.ext}`, seconds: x.video.seconds };
+            if (video) renameSync(db.photoPath(id, x.video!.tmp), db.photoPath(id, video.file));
+            return { file, hash: x.meta.hash, takenAt: x.meta.takenAt?.toISOString() ?? null, gps: x.meta.gps ?? null, flags: x.flags, checking: true, ai: null, aiError: false, ...(video && { video }) };
+          }),
+          review: null,
+          reviewedAt: null,
+        };
+        list.push(u);
+        return u;
+      });
+    } finally {
+      for (const t of temp) rmSync(db.photoPath(id, t), { force: true }); // already renamed when saved
     }
-    const created = await db.updates.mutate(id, (list, next) => {
-      const u: Update = {
-        id: next,
-        at: now.toISOString(),
-        roomIds: rooms.map((r) => r.id),
-        scopeLabel: scopeLabel(rooms),
-        stage: stage.data!,
-        note,
-        photos: prepared.map((x, i) => {
-          const file = `${next}-${i + 1}.${x.ext}`;
-          writeFileSync(db.photoPath(id, file), x.buf);
-          return { file, hash: x.meta.hash, takenAt: x.meta.takenAt?.toISOString() ?? null, gps: x.meta.gps ?? null, flags: x.flags, checking: true, ai: null, aiError: false };
-        }),
-        review: null,
-        reviewedAt: null,
-      };
-      list.push(u);
-      return u;
-    });
     for (const ph of created.photos) enqueue({ projectId: id, updateId: created.id, file: ph.file });
     return send(res, 201, created);
   }
@@ -439,7 +509,7 @@ async function projectRoute(req: IncomingMessage, res: ServerResponse, url: URL,
       return i < 0 ? null : list.splice(i, 1)[0];
     });
     if (!removed) fail(404, "No such update");
-    for (const ph of removed!.photos) rmSync(db.photoPath(id, ph.file), { force: true });
+    for (const ph of removed!.photos) for (const f of [ph.file, ph.video?.file]) if (f) rmSync(db.photoPath(id, f), { force: true });
     // AI suggestions from these photos go too; real issues stay but lose the deleted photo
     await db.issues.mutate(id, (list) => {
       for (let i = list.length - 1; i >= 0; i--) {
@@ -568,7 +638,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   const secure = process.env.COOKIE_SECURE === "1" || req.headers["x-forwarded-proto"] === "https";
 
   // which AI answers: the web app only auto-asks it when it is quick (Gemini); the local model takes minutes
-  if (path === "/api/ai" && m === "GET") return send(res, 200, { provider: process.env.AI_PROVIDER ?? "demo", fast: process.env.AI_PROVIDER === "gemini" || !process.env.AI_PROVIDER || process.env.AI_PROVIDER === "demo" });
+  if (path === "/api/ai" && m === "GET") return send(res, 200, { provider: process.env.AI_PROVIDER ?? "demo", fast: process.env.AI_PROVIDER === "gemini" || !process.env.AI_PROVIDER || process.env.AI_PROVIDER === "demo", video: await hasFfmpeg() });
   if (path.startsWith("/api/admin")) return adminRoute(req, res, path, m, ip, secure);
 
   // ---------- accounts: one per company; each sees only its own projects

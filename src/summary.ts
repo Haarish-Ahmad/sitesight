@@ -7,6 +7,13 @@ const DAY = 86_400_000;
 // Rejected claims never count; "finishing" only counts once a person approves it.
 export const counts = (u: Update) => u.review !== "rejected" && (u.stage !== "finishing" || u.review === "approved");
 export const flagsOf = (u: Update) => u.photos.flatMap((p) => p.flags);
+// "3 photos", "2 photos, 1 video", "1 video"
+export function mediaLabel(photos: { video?: unknown }[]) {
+  const v = photos.filter((p) => p.video).length;
+  const n = photos.length - v;
+  const part = (k: number, w: string) => `${k} ${w}${k === 1 ? "" : "s"}`;
+  return v ? (n ? `${part(n, "photo")}, ${part(v, "video")}` : part(v, "video")) : part(n, "photo");
+}
 export const needsReview = (u: Update) => u.review === null && (u.stage === "finishing" || flagsOf(u).length > 0);
 
 export type UpdateStatus = "rejected" | "approved" | "checking" | "needs_review" | "no_photo" | "looks_right";

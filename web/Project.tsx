@@ -171,6 +171,7 @@ export function ProjectPage({ id, token, tab = "overview" }: { id?: string; toke
     href: (t) => `${hrefBase}${t ? `/${t}` : ""}`,
     reload,
     photo: (file, w = 1600) => `${base}/photos/${file}?w=${w}`,
+    video: (file) => `${base}/videos/${file}`,
     showPhotos: (photos, start = 0) => photos.length && setViewer({ photos, start }),
     uploadPreset,
     setUploadPreset,

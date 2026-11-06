@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { statusOf, type UpdateStatus } from "../../src/summary";
+import { mediaLabel, statusOf, type UpdateStatus } from "../../src/summary";
 import { dateKey, fmtDay, fromKey, plural } from "../lib";
 import { Empty, Icon } from "../ui";
 import { UpdateCard, useProject } from "./common";
@@ -66,7 +66,7 @@ export function Timeline() {
       ) : (
         Object.entries(groups).map(([d, list]) => (
           <section key={d} className="day-group">
-            <h2 className="day-head">{fmtDay(fromKey(d))} <span className="muted small">· {plural(list.length, "update")} · {plural(list.reduce((n, u) => n + u.photos.length, 0), "photo")}</span></h2>
+            <h2 className="day-head">{fmtDay(fromKey(d))} <span className="muted small">· {plural(list.length, "update")} · {mediaLabel(list.flatMap((u) => u.photos))}</span></h2>
             <div className="stack">{list.map((u) => <UpdateCard key={u.id} u={u} />)}</div>
           </section>
         ))

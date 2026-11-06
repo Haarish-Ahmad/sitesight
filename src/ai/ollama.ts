@@ -56,10 +56,14 @@ Describe only what is visible. Fill every field:
 ${Object.entries(FEATURES).map(([k, v]) => `  - ${k}: ${v}`).join("\n")}
 Never guess. Prefer "unknown" and "not_enough_evidence" over a wrong answer.`;
 
+const FRAMES = (n: number) => `The ${n} images are frames, in order, from one short video of a single place on a building site. Treat them together as one view of that place: answer for the place, and "the photo" below means all ${n} frames.\n\n`;
+
 export const modelProvider: Provider = async (image) => {
-  // phone photos are huge; full-res made the 3b model loop and blow the context
-  const small = await sharp(image).rotate().resize(1024, 1024, { fit: "inside", withoutEnlargement: true }).jpeg().toBuffer();
-  const out = await generate([{ role: "user", content: PROMPT, images: [small.toString("base64")] }], {
+  const list = Array.isArray(image) ? image : [image];
+  // phone photos are huge; full-res made the 3b model loop and blow the context. Several frames get fewer pixels each.
+  const side = list.length > 1 ? 768 : 1024;
+  const small = await Promise.all(list.map((b) => sharp(b).rotate().resize(side, side, { fit: "inside", withoutEnlargement: true }).jpeg().toBuffer()));
+  const out = await generate([{ role: "user", content: (list.length > 1 ? FRAMES(list.length) : "") + PROMPT, images: small.map((b) => b.toString("base64")) }], {
     model: process.env.OLLAMA_MODEL ?? DEFAULT_MODEL,
     format: z.toJSONSchema(PhotoAnalysisSchema),
   });
